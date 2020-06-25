@@ -43,9 +43,9 @@ class NacaFourdigit:
         y_c = np.zeros(N)
         for i in range(0,N):
             if x[i] <= p:
-                y_c[i] = m*(2*p*x[i]-x[i]**2)/p/p
+                y_c[i] = 0.0
             else:
-                y_c[i] = m*((1-2*p)+2*p*x[i]-x[i]**2)/(1-p)/(1-p)
+                y_c[i] = -m / (1-p)**2 * (x[i]-p)**2
         return y_c
     
     def wingsection(self,x):
@@ -59,15 +59,15 @@ class NacaFourdigit:
         x_u,y_u,x_l,y_l = np.zeros(N),np.zeros(N),np.zeros(N),np.zeros(N)
         for i in range(0,N):
             if x[i] <= p:
-                theta[i] = np.arctan(m*(2*p-2*x[i])/p/p)
+                theta[i] = 0.0
             else:
-                theta[i] = np.arctan(m*(2*p-2*x[i])/(1-p)/(1-p))
+                theta[i] = np.arctan(-2*m/(1-p)**2*(x[i]-p))
             x_u[i] = x[i] - y_t[i]*np.sin(theta[i])
             y_u[i] = y_c[i] + y_t[i] * np.cos(theta[i])
             x_l[i] = x[i] + y_t[i]*np.sin(theta[i])
             y_l[i] = y_c[i] - y_t[i] * np.cos(theta[i])
-        x_u[0],y_u[0],x_u[-1],y_u[-1] = min(x),0.0,max(x),0.0
-        x_l[0],y_l[0],x_l[-1],y_l[-1] = min(x),0.0,max(x),0.0
+        x_u[0],y_u[0],x_u[-1],y_u[-1] = min(x),0.0,max(x),-m
+        x_l[0],y_l[0],x_l[-1],y_l[-1] = min(x),0.0,max(x),-m
         return x_u,y_u,x_l,y_l
 
     def print_params(self):
@@ -84,9 +84,9 @@ class NacaFourdigit:
         '''
         import csv
         if flg == "xy":
-            file_name = "naca" + self.param + ".dat"
+            file_name = "morph" + self.param + ".dat"
         elif flg == "camber":
-            file_name = "naca" + self.param + "_camber.csv"
+            file_name = "morph" + self.param + "_camber.csv"
         else:
             pass
         f = open(file_name,"w")
@@ -110,10 +110,15 @@ class NacaFivedigit:
         pass
 
 
-wing1 = NacaFourdigit("4424")
+wing1 = NacaFourdigit("4324")
 x = np.linspace(0.0,1.0,300)
 x_u,y_u,x_l,y_l = wing1.wingsection(x)
+y_c = wing1.camber_line(x)
+wing1.export(x,"xy")
 wing1.export(x,"camber")
+plt.plot(x,y_c)
+plt.show()
+plt.plot(x,np.zeros(300),linestyle="--",linewidth=0.5)
 plt.plot(x_u,y_u)
 plt.plot(x_l,y_l)
 plt.show()
