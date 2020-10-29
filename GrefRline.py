@@ -12,6 +12,7 @@ from scipy.interpolate import interp1d
 from tqdm import tqdm
 import cv2
 import traceback
+from sklearn.neighbors import NearestNeighbors 
 
 
 def gdata(dire, photo, control, indx, pix):
@@ -90,6 +91,40 @@ def rotationandcut(dire, photo, control, AoA, pix):
     cv2.imwrite("%s/rotatecut/rotate_%s.JPG" % (dire, photo), dst)
     cv2.imwrite("%s/rotatecut/rotatecut_%s.JPG" % (dire, photo), cut_dst)
 
+def bdata(dire, photo, pix, control, indx):
+    """return blue data(x-axis)"""
+    img = Image.open("%s/rotatecut/rotatecut_%s.JPG" % (dire, photo))
+    width, height = img.size
+    imgdata = img.getdata()
+    dataB_list = []
+    dataB = pd.DataFrame(index=[], columns=["x", "y"])
+
+    for y in tqdm(range(height)):
+        ycache = y * width
+        for x in range(width):
+            pixdata = imgdata[ycache + x] # color_R = pixdata[0], color_G = pixdata[1], color_B = pixdata[2]
+            if 0 <= pixdata[0] <= 40 and pixdata[1] >= 150:
+                dataB_list.append((x, y))
+            else:
+                pass
+    
+    dataB = pd.DataFrame(dataB_list, columns=dataB.columns)
+    kmB = KMeans(n_clusters=2, max_iter=100, random_state=1)
+    clusterB = kmB.fit_predict(dataB)
+    dataB['cluster_id'] = clusterB
+    centersB = kmB.cluster_centers_
+    #x座標の小さいほうがLE
+    if centersB[0,0] < centersB[1,0]:
+        le = centersB[0,:]
+        te = centersB[1,:]
+    else:
+        le = centersB[1,:]
+        te = centersB[0,:]
+    #軸を反転
+    te[1] = height - te[1]
+    le[1] = height - te[1]
+    return le,te
+
 def spoit_red(dire, photo, pix, control, indx):
     img = Image.open("%s/rotatecut/rotatecut_%s.JPG" % (dire, photo))
     width, height = img.size
@@ -132,19 +167,19 @@ def plot_red(dire, photo, pix, control, indx):
 
     # x方向分割間隔(pix)=10mm
     Xcut_int = int(2 / pix)
-    Xcut_list = [LE_pix[0]]
+    Xcut_list = [LE_pix[0] +10]
     while Xcut_list[-1] < TE_pix[0] - Xcut_int:
         Xcut_list.append(Xcut_list[-1] + Xcut_int)
     else:
         Xcut_list.append(TE_pix[0])
 
     # y方向分割間隔(pix)
-    #Ycut_int = int(10 / pix)
-    #Ycut_list = [TOP_pix[1]]
-    #while Ycut_list[-1] < BTM_pix[1] - Ycut_int:
-    #    Ycut_list.append(Ycut_list[-1] + Ycut_int)
-    #else:
-    #    Ycut_list.append(BTM_pix[1])
+    Ycut_int = int(10 / pix)
+    Ycut_list = [TOP_pix[1]-45]
+    while Ycut_list[-1] < BTM_pix[1] + 45 - Ycut_int:
+        Ycut_list.append(Ycut_list[-1] + Ycut_int)
+    else:
+        Ycut_list.append(BTM_pix[1] + 45)
 
     centersR = pd.DataFrame(index=[], columns=["x", "y"])
 
@@ -166,23 +201,23 @@ def plot_red(dire, photo, pix, control, indx):
             plt.scatter(centerR[:, 0], centerR[:, 1], s=100, facecolor="none", edgecolors="red", marker=".")
             centersR = np.vstack([centersR, centerR])
 
-    #for i in range(len(Ycut_list)):
-    #    databox = dataR[(Ycut_list[i] - 5 <= dataR["y"]) & (dataR["y"] <= Ycut_list[i] + 5)]
-    #    if len(databox) == 0 or len(databox) == 1:
-    #        pass
-    #    else:
-    #        kmR = KMeans(n_clusters=2, max_iter=100, random_state=1)
-    #        clusterR = kmR.fit_predict(databox)
-    #        centerR = kmR.cluster_centers_
-    #        ##二つのcenterが10pix以上離れていないかった場合は平均値を採用
-    #        if math.sqrt((centerR[0, 0] - centerR[1, 0]) ** 2 + (centerR[0, 1] - centerR[1, 1]) ** 2) < 10:
-    #            centerR[0, 0] = (centerR[0, 0] + centerR[1, 0]) / 2
-    #            centerR[0, 1] = (centerR[0, 1] + centerR[1, 1]) / 2
-    #            centerR = np.delete(centerR, 1, axis=0)
-    #        else:
-    #            pass
-    #        plt.scatter(centerR[:, 0], centerR[:, 1], s=100, facecolor="none", edgecolors="red", marker=".")
-    #        centersR = np.vstack([centersR, centerR])
+    for i in range(len(Ycut_list)):
+        databox = dataR[(Ycut_list[i] - 5 <= dataR["y"]) & (dataR["y"] <= Ycut_list[i] + 5)]
+        if len(databox) == 0 or len(databox) == 1:
+            pass
+        else:
+            kmR = KMeans(n_clusters=2, max_iter=100, random_state=1)
+            clusterR = kmR.fit_predict(databox)
+            centerR = kmR.cluster_centers_
+            ##二つのcenterが10pix以上離れていないかった場合は平均値を採用
+            if math.sqrt((centerR[0, 0] - centerR[1, 0]) ** 2 + (centerR[0, 1] - centerR[1, 1]) ** 2) < 10:
+                centerR[0, 0] = (centerR[0, 0] + centerR[1, 0]) / 2
+                centerR[0, 1] = (centerR[0, 1] + centerR[1, 1]) / 2
+                centerR = np.delete(centerR, 1, axis=0)
+            else:
+                pass
+            plt.scatter(centerR[:, 0], centerR[:, 1], s=100, facecolor="none", edgecolors="red", marker=".")
+            centersR = np.vstack([centersR, centerR])
 
     # XcutとYcutで重複があるとスプラインでエラーを生じるので重複削除
     centersR = np.round(centersR.astype(np.double))
@@ -197,7 +232,9 @@ def sort(dire, photo, control, indx):
     data = np.loadtxt("%s/Rdata/redplot_%s.csv" % (dire, photo), delimiter=",")
 
     t_edge = data[data.argmax(0)[0], :]
+    print(t_edge)
     l_edge = data[data.argmin(0)[0], :]
+    print(l_edge)
 
     morphing_edge = control.loc[indx, "morphing_edge"]
 
@@ -219,70 +256,45 @@ def sort(dire, photo, control, indx):
     t_edge = data[data.argmax(0)[0], :]
     l_edge = data[data.argmin(0)[0], :]
 
-    base_x = control.loc[indx, "base_x"] * 200 / pix
-    base_y = control.loc[indx, "base_y"] * 200 / pix
-
-    if t_edge[0] - base_x != 0:
-        t_angle_rad = math.atan((t_edge[1] - base_y) / (t_edge[0] - base_x))
-        t_angle = 180. / math.pi * t_angle_rad
-    elif t_edge[1] - base_y >= 0:
-        t_angle = 90
-    else:
-        t_angle = -90
-
-    zero = np.zeros((data.shape[0], 1))
-    data = np.hstack((data, zero))
-    if t_angle >= 0:
-        flag = 1
-    else:
-        flag = 0
-
-    for i in range(data.shape[0]):
-        x = data[i, 0]
-        y = data[i, 1]
-        if x - base_x != 0:
-            a_angle_rad = math.atan((y - base_y) / (x - base_x))
-            a_angle = 180. / math.pi * a_angle_rad
-        elif y - base_y >= 0:
-            a_angle = -90
+    data_sorted = np.zeros(data.shape)
+    data_sorted[0,:] = t_edge
+    data = np.delete(data,obj=data.argmax(0)[0],axis=0)
+    
+    for i in range(0,len(data[:,0])):
+        #start点の近傍では増加傾向のみ許容
+        if i < 5 and i > 0:
+            knn_model = NearestNeighbors(n_neighbors=10).fit(data)
+            distance,ind = knn_model.kneighbors([data_sorted[i,:]])
+            next_ind_cand = ind[0]
+            for k in next_ind_cand:
+                y = data[k,1]
+                y_prev = data_sorted[i,1]
+                if y < y_prev:
+                    next_ind_cand = np.delete(next_ind_cand,obj=np.where(next_ind_cand == k),axis=0)
+                else:
+                    pass
+            #残った点=増加傾向の点で最小インデックスのものが最近傍
+            next_ind_in_data = next_ind_cand[0]
         else:
-            a_angle = 90
-        if flag == 1 and data[i, 0] > base_x and data[i, 1] >= base_y and a_angle >= t_angle:  # 第1象限edge以降(edge正)
-            data[i, 2] = a_angle - t_angle
-        elif flag == 1 and data[i, 0] > base_x and data[i, 1] >= base_y and a_angle < t_angle:  # 第1象限edge未満(edge正)
-            data[i, 2] = 360 - (t_angle - a_angle)
-        elif flag == 0 and data[i, 0] > base_x and data[i, 1] >= base_y:  # 第1象限(edge負)
-            data[i, 2] = a_angle - t_angle
-        elif data[i, 0] <= base_x and data[i, 1] >= base_y:  # 第2象限(共通)
-            data[i, 2] = a_angle + 180 - t_angle
-        elif data[i, 0] <= base_x and data[i, 1] <= base_y:  # 第3象限(共通)
-            data[i, 2] = a_angle + 180 - t_angle
-        elif flag == 1 and data[i, 0] > base_x and data[i, 1] <= base_y:  # 第4象限(edge正)
-            if a_angle != t_angle: # 360°は0°とする
-                data[i, 2] = a_angle + 360 - t_angle
-            else:
-                data[i, 2] = 0.
-        elif flag == 0 and data[i, 0] > base_x and data[i, 1] <= base_y and a_angle < t_angle:  # 第4象限edge未満(edge負)
-            data[i, 2] = a_angle + 360 - t_angle
-        elif flag == 0 and data[i, 0] > base_x and data[i, 1] <= base_y and a_angle >= t_angle:  # 第4象限edge以降(edge負)
-            data[i, 2] = a_angle - t_angle
+            knn_model = NearestNeighbors(n_neighbors=1).fit(data)
+            distance,ind = knn_model.kneighbors([data_sorted[i,:]])
+            next_ind_in_data = ind[0][0]
+        data_sorted[i+1,:] = data[next_ind_in_data,:]
+        data = np.delete(data,obj=next_ind_in_data,axis=0)
+    
+    data = np.vstack((data_sorted,data_sorted[0,:]))
+    data = np.delete(data,obj=[],axis=0)
+
+    # 近すぎるセンターは割愛
+    list = []
+    for i in range(len(data)-2):
+        length = math.sqrt((data[i+1,0]-data[i+2,0])**2 + (data[i+1,1]-data[i+2,1])**2)
+        if length < 1 / pix:
+            list.append(i+1)
         else:
             pass
 
-    data = data[data[:, 2].argsort(), :]
-    data = np.delete(data, 2, 1)
-    data = np.vstack((data, t_edge))
-
-    # 近すぎるセンターは割愛
-    #list = []
-    #for i in range(len(data)-2):
-    #    length = math.sqrt((data[i+1,0]-data[i+2,0])**2 + (data[i+1,1]-data[i+2,1])**2)
-    #    if length < 1 / pix:
-    #        list.append(i+1)
-    #    else:
-    #        pass
-
-    #data = np.delete(data,list,axis=0)
+    data = np.delete(data,list,axis=0)
 
     np.savetxt("%s/sortspline/sort_%s.csv" % (dire, photo), data, delimiter=",")
 
@@ -320,6 +332,12 @@ def spline(dire, photo):
     sp_data_rev = sp_data.transpose()
     ##200mm = 1
     sp_data_rev[:, :] = sp_data_rev[:, :] / (200 / pix)
+
+    #========Tuned to fit naca0015=================
+    sp_data_rev[:, 0] = sp_data_rev[:, 0]*1.03
+    sp_data_rev[:, 1] = sp_data_rev[:, 1]+0.00
+    #==============================================
+
     np.savetxt("%s/sortspline/splinedata_%s.csv" % (dire, photo), sp_data_rev, delimiter=",")
     #splineデータを正規化
     #spline_rev[:, :] = 1 / sum * spline_rev[:, :]
@@ -432,7 +450,7 @@ def plot(dire, photo, control, AoA):
     textsize = control.loc[indx, "textsize"]
     plt.figure(figsize=(10, 5))
     plt.plot(spdata[:, 0], spdata[:, 1])
-    plt.plot(camberdata[:, 0], camberdata[:, 1], color='m')
+    #plt.plot(camberdata[:, 0], camberdata[:, 1], color='m')
     plt.plot(x, y, color='green')
     plt.plot(z, w, color='green')
     plt.axes().set_aspect('equal')
@@ -445,6 +463,32 @@ def plot(dire, photo, control, AoA):
     plt.title("AoA = %s" % (AoA), fontsize = textsize)
     plt.savefig("%s/plot/plot_%s.png" % (dire, photo))
     plt.close()   
+
+def plot_on_same_fig(dire, photo, control, AoA):
+    spdata = np.loadtxt("%s/sortspline/splinedata_%s.csv" % (dire, photo), delimiter=",")
+    camberdata = np.loadtxt("%s/camber/cambersp_%s.csv" % (dire, photo), delimiter=",")
+    t_edge = spdata[spdata.argmax(0)[0], :]
+    l_edge = spdata[spdata.argmin(0)[0], :]
+    #x = np.linspace(l_edge[0], t_edge[0], 100)
+    #y = np.linspace(l_edge[1], t_edge[1], 100)
+    #z = np.linspace(0, 1.0, 100)
+    #w = np.linspace(0, 0, 100)
+
+    textsize = control.loc[indx, "textsize"]
+    #plt.figure(figsize=(10, 5))
+    plt.plot(spdata[:, 0], spdata[:, 1],label="{}".format(photo))
+    #plt.plot(camberdata[:, 0], camberdata[:, 1], color='m')
+    #plt.plot(x, y, color='green')
+    #plt.plot(z, w, color='green')
+    plt.axes().set_aspect('equal')
+    plt.tick_params(labelsize = textsize)
+    plt.xlabel("x/c", fontsize = textsize)
+    plt.ylabel("y/c", fontsize = textsize)
+    plt.grid(True)
+    plt.ylim(-0.2, 0.2)
+    plt.xlim(0, 1.0)
+    plt.legend()
+
 
 dire = os.getcwd()
 control = pd.read_csv("%s/control.csv" % dire, delimiter=",")
@@ -473,6 +517,8 @@ for indx in range(len(control)):
             rotationandcut(dire, photo, control, AoA, pix)
             spoit_red(dire, photo, pix, control, indx)
             plot_red(dire, photo, pix, control, indx)
+            #le,te = bdata(dire, photo, control, indx, pix)
+            #sort(dire, photo, control, indx,le,te)
             sort(dire, photo, control, indx)
             spline(dire, photo)
             camber(dire,photo)
@@ -482,5 +528,37 @@ for indx in range(len(control)):
             traceback.print_exc()
     else:
         pass
+
+df_ref = pd.read_csv("/Users/ochihideji/Desktop/a1_卒業研究/naca0015.csv",header=None)
+ref = np.array(df_ref).T
+plt.plot(ref[0,:],ref[1,:],linestyle="--",linewidth=1)
+
+for indx in [0,1,2,3,4,5]:
+    if control.loc[indx, "flag"] == 1:
+        try:
+            photo = control.loc[indx, "name"]
+            pix = control.loc[indx, "pix"]
+            AoA = control.loc[indx, "AoA"]
+            plot_on_same_fig(dire, photo, control, AoA)
+        except:
+            traceback.print_exc()
+    else:
+        pass
+plt.show()
+
+ref = np.array(df_ref).T
+plt.plot(ref[0,:],ref[1,:],linestyle="--",linewidth=1)
+for indx in [6,7,8,9,10,11]:
+    if control.loc[indx, "flag"] == 1:
+        try:
+            photo = control.loc[indx, "name"]
+            pix = control.loc[indx, "pix"]
+            AoA = control.loc[indx, "AoA"]
+            plot_on_same_fig(dire, photo, control, AoA)
+        except:
+            traceback.print_exc()
+    else:
+        pass
+plt.show()
 
 input("###########please enter any key#############")
